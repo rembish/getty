@@ -20,8 +20,6 @@ pip-log.txt
 .coverage
 .tox
 
-#Translations
-*.mo
+# IDE configuration
+.idea
 
-#Mr Developer
-.mr.developer.cfg
