@@ -1,7 +1,53 @@
+from datetime import datetime
+from re import match
 from time import time
 from uuid import uuid4
+from warnings import warn
 from requests import post
 from simplejson import dumps
+from pytz import FixedOffset
+
+__version__ = '0.1.0'
+
+class GettyException(Exception):
+    pass
+
+class GettyImage(object):
+    def __init__(self, data):
+        self.id = data['ImageId']
+        self.caption = data['Caption']
+        self.title = data['Title']
+        self.artist = data['Artist']
+
+        self.url = data['UrlComp']
+        self.preview = data['UrlPreview']
+        self.thumbnail = data['UrlThumb']
+
+        self.created = self.__to_datetime(data['DateCreated'])
+        self.published = self.__to_datetime(data['DateSubmitted'])
+
+    def __to_datetime(self, json_date):
+        matches = match('/Date\(([0-9]+)(([\-+])([0-9]{2})([0-9]{2}))?\)/', json_date)
+        tz = FixedOffset(
+            (int(matches.group(4).lstrip('0') or 0) * 60 + int(matches.group(5).strip('0') or 0)) * int('%s1' % matches.group(3))
+        )
+        return datetime.fromtimestamp(int(matches.group(1)) // 1000, tz=tz)
+
+    def __str__(self):
+        return self.url
+
+    def __repr__(self):
+        return '<%s[%s] "%s">' % (self.__class__.__name__, self.id, self.url)
+
+class GettyCollection(list):
+    def __init__(self, data):
+        self.page = data['ItemStartNumber']
+        self.total = data['ItemTotalCount']
+        self.count = data['ItemCount']
+
+        super(GettyCollection, self).__init__([
+            GettyImage(image) for image in data['Images']
+        ])
 
 class GettyToken(object):
     def __init__(self, timestamp=0, parameters={}):
@@ -17,10 +63,8 @@ class GettyToken(object):
             return None
 
         if url.startswith('https'):
-            print 'Using Secure Token'
             return self.secure
 
-        print 'Using Standard Token'
         return self.standard
 
     @property
@@ -40,10 +84,8 @@ class GettyClient(object):
     def token(self):
         if not self._token.activated:
             self._create_session()
-            print 'Token Created'
         elif not self._token.valid:
             self._renew_session()
-            print 'Token Renewed'
         return self._token
 
     def _request(self, url, check=True, **additional):
@@ -57,18 +99,16 @@ class GettyClient(object):
         payload.update(additional)
         answer = post(url, data=dumps(payload), headers={'content-type': 'application/json'})
         response = answer.json
+
         status = response['ResponseHeader']['Status'].lower()
-
-        print 'URL'
-        print url
-        print 'REQUEST'
-        print payload
-        print 'RESPONSE'
-        print response
-
+        if status == 'warning':
+            warn(' '.join(status['Message'] for status in response['ResponseHeader']['StatusList']))
+            status = 'success'
         if status == 'success':
             del response['ResponseHeader']
             return response
+
+        raise GettyException(' '.join(status['Message'] for status in response['ResponseHeader']['StatusList']))
 
     def _create_session(self):
         self._token = GettyToken(time(), self._request(
@@ -91,21 +131,32 @@ class GettyClient(object):
         )['RenewSessionResults'])
 
     def search(self, query, count=10, page=1):
+        _count = count
+
+        counts = map(int, '1,2,3,4,5,6,10,12,15,20,25,30,50,60,75'.split(','))
+        if count not in counts:
+            try:
+                count = filter(lambda x: x > count, counts)[0]
+            except IndexError:
+                count = counts[-1]
+
         result = self._request(
             "http://connect.gettyimages.com/v1/search/SearchForImages",
             SearchForImages2RequestBody={
-                'Filter': {},
+                'Filter': {
+                    'LicensingModels': ['RoyaltyFree'],
+                    'FileTypes': ['jpg'],
+                    'ImageFamilies': ['creative'],
+                },
                 'Query': {
                     'SearchPhrase': query,
                 },
                 'ResultOptions': {
                     'ItemCount': count,
                     'ItemStartNumber': page,
+                    'IncludeKeywords': True,
                 }
             }
-        )
-        return result
+        )['SearchForImagesResult']
 
-if __name__ == '__main__':
-    gc = GettyClient(system_id, system_password, username, password)
-    print gc.search('banana')
+        return GettyCollection(result)[:_count]
