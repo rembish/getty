@@ -3,11 +3,14 @@ from re import match
 from time import time
 from uuid import uuid4
 from warnings import warn
-from requests import post
-from simplejson import dumps
+try:
+    from simplejson import dumps
+except ImportError:
+    from json import dumps
+
 from pytz import FixedOffset
 
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 
 class GettyException(Exception):
     pass
@@ -89,6 +92,8 @@ class GettyClient(object):
         return self._token
 
     def _request(self, url, check=True, **additional):
+        from requests import post
+
         payload = {
             'RequestHeader': {
                 'Token': (self.token if check else self._token).get_for(url),
