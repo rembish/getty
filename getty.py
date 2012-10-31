@@ -1,6 +1,7 @@
 from datetime import datetime
 from re import match
-from time import time
+from time import time, ctime
+from datetime import datetime
 from uuid import uuid4
 from warnings import warn
 try:
@@ -8,7 +9,7 @@ try:
 except ImportError:
     from json import dumps
 
-from pytz import FixedOffset
+from pytz import FixedOffset, UTC
 
 __version__ = '0.1.1'
 
@@ -26,15 +27,24 @@ class GettyImage(object):
         self.preview = data['UrlPreview']
         self.thumbnail = data['UrlThumb']
 
-        self.created = self.__to_datetime(data['DateCreated'])
-        self.published = self.__to_datetime(data['DateSubmitted'])
+        self.created = GettyImage.to_datetime(data['DateCreated'])
+        self.published = GettyImage.to_datetime(data['DateSubmitted'])
 
-    def __to_datetime(self, json_date):
-        matches = match('/Date\(([0-9]+)(([\-+])([0-9]{2})([0-9]{2}))?\)/', json_date)
-        tz = FixedOffset(
-            (int(matches.group(4).lstrip('0') or 0) * 60 + int(matches.group(5).strip('0') or 0)) * int('%s1' % matches.group(3))
-        )
-        return datetime.fromtimestamp(int(matches.group(1)) // 1000, tz=tz)
+    @staticmethod
+    def to_datetime(json_date):
+        match_ctime = match('/Date\(([0-9]+)\)\/', json_date)
+        if match_ctime:
+            return datetime.fromtimestamp(
+                int(match_ctime.groups()[0]) // 1000, UTC)
+
+        matches = match('/Date\(([0-9]+)(([\-+])([0-9]{2})([0-9]{2}))?\)/',
+                        json_date)
+
+        if matches:
+            tz = FixedOffset(
+                (int(matches.group(4).lstrip('0') or 0) * 60 + int(matches.group(5).strip('0') or 0)) * int('%s1' % matches.group(3))
+            )
+            return datetime.fromtimestamp(int(matches.group(1)) // 1000, tz=tz)
 
     def __str__(self):
         return self.url
