@@ -1,13 +1,11 @@
 from distutils.core import setup
 from os.path import abspath, dirname, join
 
-from getty import __version__
-
 readme = join(dirname(abspath(__file__)), 'README.rst')
 
 setup(
     name='getty',
-    version=__version__,
+    version='0.2.0',
     py_modules=["getty"],
     url='https://github.com/don-ramon/getty',
     license='BSD',
